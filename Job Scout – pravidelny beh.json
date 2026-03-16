@@ -1,0 +1,422 @@
+{
+  "name": "Job Scout – pravidelny beh",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "n001",
+      "name": "Manualni spusteni",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst urls = JSON.parse(fs.readFileSync('/data/urls.json', 'utf8'));\nreturn urls.map(function(u){ return { json: u }; });"
+      },
+      "id": "n002",
+      "name": "Nacti URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(function(i){ return i.json.aktivni === true; }).map(function(i){ return { json: i.json }; });"
+      },
+      "id": "n003",
+      "name": "Filtruj aktivni URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "n004",
+      "name": "Loop pres URL",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        704,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst rules = JSON.parse(fs.readFileSync('/data/pravidla.json', 'utf8'));\nreturn rules.map(function(r){ return { json: r }; });"
+      },
+      "id": "n005",
+      "name": "Nacti pravidla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const urlItem = $('Loop pres URL').item.json;\nconst rules = items.map(function(i){ return i.json; });\nreturn [{ json: Object.assign({}, urlItem, { _rules: rules }) }];"
+      },
+      "id": "n006",
+      "name": "Spoj pravidla s URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Loop pres URL').item.json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "cs-CZ,cs;q=0.9"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "n007",
+      "name": "Stahni vypis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1424,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const srcItem = $('Loop pres URL').item.json;\nconst vzor = (srcItem.url_vzor || '').toLowerCase();\nconst baseUrl = srcItem.url || '';\nconst html = String(items[0].json.data || items[0].json.body || '');\nvar links = [];\nvar re = /href=[\"']([^\"'#][^\"']*)[\"']/gi;\nvar match;\nwhile ((match = re.exec(html)) !== null) {\n  var href = match[1];\n  if (href.startsWith('http')) {\n  } else if (href.startsWith('/')) {\n    var base = baseUrl.match(/^(https?:\\/\\/[^\\/]+)/);\n    href = base ? base[1] + href : href;\n  } else { continue; }\n  if (vzor && href.toLowerCase().indexOf(vzor) === -1) continue;\n  if (links.indexOf(href) === -1) links.push(href);\n}\nreturn links.map(function(url) {\n  return { json: {\n    odkaz_inzeratu: url,\n    zdroj_nazev: srcItem.nazev || baseUrl,\n    zdroj_url: baseUrl\n  }};\n});"
+      },
+      "id": "n008",
+      "name": "Extrahuj odkazy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "n009",
+      "name": "Loop pres inzerat",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1904,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.odkaz_inzeratu }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "cs-CZ,cs;q=0.9"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "n010",
+      "name": "Stahni detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2144,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const loopItem = $('Loop pres inzerat').item.json;\nconst odkaz = loopItem.odkaz_inzeratu || '';\nconst zdroj_nazev = loopItem.zdroj_nazev || '';\nconst zdroj_url = loopItem.zdroj_url || '';\nconst html = String(items[0].json.data || items[0].json.body || '');\nconst text = html.replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')\n  .replace(/\\s+/g, ' ').trim();\nvar nazev = '', m;\nm = html.match(/<h1[^>]*>([\\s\\S]{1,200}?)<\\/h1>/i);\nif (m) nazev = m[1].replace(/<[^>]+>/g, '').trim();\nif (!nazev) { m = html.match(/og:title[^>]*content=[\"']([^\"']+)[\"']/i); if (m) nazev = m[1].trim(); }\nif (!nazev) { m = html.match(/<title[^>]*>([^<]+)<\\/title>/i); if (m) nazev = m[1].replace(/[|\\-\\u2013].*/,'').trim(); }\nvar firma = '';\nm = html.match(/hiringOrganization[\\s\\S]{0,300}?\"name\":\\s*\"([^\"]{1,100})\"/i);\nif (m) firma = m[1];\nif (!firma) { m = html.match(/og:site_name[^>]*content=[\"']([^\"']+)[\"']/i); if (m) firma = m[1].trim(); }\nvar lokalita = '';\nm = html.match(/addressLocality[\"':\\s]+([^\\s\"'}{,]{2,50})/i);\nif (m) lokalita = m[1].trim();\nreturn [{ json: {\n  nazev_pozice: nazev.substring(0, 150),\n  firma: firma.substring(0, 100),\n  lokalita: lokalita.substring(0, 100),\n  popis: text.substring(0, 3000),\n  odkaz_inzeratu: odkaz,\n  zdroj_nazev: zdroj_nazev,\n  zdroj_url: zdroj_url\n}}];"
+      },
+      "id": "n011",
+      "name": "Parsuj detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = items[0].json;\nconst allRules = $('Spoj pravidla s URL').item.json._rules || [];\nconst haystack = (j.nazev_pozice + ' ' + j.firma + ' ' + j.lokalita + ' ' + j.popis).toLowerCase();\nvar skore = 0, matched = [];\nallRules.forEach(function(r) {\n  if (haystack.indexOf((r.pravidlo||'').toLowerCase()) !== -1) {\n    skore += (r.vaha || 0);\n    matched.push(r.pravidlo + '(' + (r.vaha > 0 ? '+' : '') + r.vaha + ')');\n  }\n});\nskore = Math.max(1, Math.min(10, skore));\nreturn [{ json: Object.assign({}, j, { prescoring: skore, prescoring_match: matched.join(', ') }) }];"
+      },
+      "id": "n012",
+      "name": "Pre-scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-pre",
+              "leftValue": "={{ $json.prescoring }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n013",
+      "name": "Filtr prescoring 5",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst j = $('Pre-scoring').item.json;\nconst soubor = '/data/vysledky.json';\nvar vysledky = [];\ntry { vysledky = JSON.parse(fs.readFileSync(soubor, 'utf8')); } catch(e) {}\n// Dedup podle odkazu\nconst odkaz = j.odkaz_inzeratu || '';\nconst existuje = vysledky.some(function(v){ return v.odkaz === odkaz; });\nif (existuje) {\n  return [{ json: { preskoceno: true, odkaz: odkaz } }];\n}\n// Pridej novy zaznam\nconst zaznam = {\n  datum: new Date().toISOString().slice(0,19).replace('T',' '),\n  zdroj_nazev: j.zdroj_nazev || '',\n  zdroj_url: j.zdroj_url || '',\n  nazev_pozice: j.nazev_pozice || '',\n  firma: j.firma || '',\n  lokalita: j.lokalita || '',\n  odkaz: odkaz,\n  prescoring: j.prescoring || 1,\n  match_pravidla: j.prescoring_match || '',\n  popis: j.popis || '',\n};\nvysledky.push(zaznam);\nvysledky.sort(function(a,b){ return b.prescoring - a.prescoring; });\nfs.writeFileSync(soubor, JSON.stringify(vysledky, null, 2), 'utf8');\nreturn [{ json: Object.assign({}, zaznam, { ulozeno: true }) }];"
+      },
+      "id": "n014",
+      "name": "Zkontroluj a uloz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3104,
+        304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manualni spusteni": {
+      "main": [
+        [
+          {
+            "node": "Nacti URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nacti URLs": {
+      "main": [
+        [
+          {
+            "node": "Filtruj aktivni URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtruj aktivni URL": {
+      "main": [
+        [
+          {
+            "node": "Loop pres URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop pres URL": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Nacti pravidla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nacti pravidla": {
+      "main": [
+        [
+          {
+            "node": "Spoj pravidla s URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spoj pravidla s URL": {
+      "main": [
+        [
+          {
+            "node": "Stahni vypis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stahni vypis": {
+      "main": [
+        [
+          {
+            "node": "Extrahuj odkazy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrahuj odkazy": {
+      "main": [
+        [
+          {
+            "node": "Loop pres inzerat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop pres inzerat": {
+      "main": [
+        [
+          {
+            "node": "Loop pres URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stahni detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stahni detail": {
+      "main": [
+        [
+          {
+            "node": "Parsuj detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsuj detail": {
+      "main": [
+        [
+          {
+            "node": "Pre-scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-scoring": {
+      "main": [
+        [
+          {
+            "node": "Filtr prescoring 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtr prescoring 5": {
+      "main": [
+        [
+          {
+            "node": "Zkontroluj a uloz",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop pres inzerat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zkontroluj a uloz": {
+      "main": [
+        [
+          {
+            "node": "Loop pres inzerat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "d3da2c17-60dd-4ff3-91e3-4671e6022a52",
+  "meta": {
+    "instanceId": "e92bee629e0fd191ede7585704ad81e997328754dfa07545d7224a5d81518e85"
+  },
+  "id": "lq6PYE1CdiW9WNVb",
+  "tags": []
+}
